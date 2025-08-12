@@ -93,3 +93,26 @@ fn test_item_not_found() {
         .failure()
         .stderr(predicate::str::contains("Item 'non_existent_item' not found"));
 }
+
+#[test]
+fn test_extract_to_stdout() {
+    let mut cmd = Command::cargo_bin("rust_code_slicer").unwrap();
+    cmd.arg("--input=tests/complex_sample.rs")
+        .arg("--item-name=Message");
+
+    let expected = r#"
+pub enum Message {
+    Quit,
+    Move { x: i32, y: i32 },
+    Write(String),
+    ChangeColor(i32, i32, i32),
+}
+"#;
+
+    let mut expected_with_newline = expected.trim().to_string();
+    expected_with_newline.push('\n');
+
+    cmd.assert()
+        .success()
+        .stdout(expected_with_newline);
+}

@@ -10,9 +10,9 @@ struct Cli {
     #[arg(long)]
     input: String,
 
-    /// The output file to write to
+    /// The output file to write to. If not provided, prints to stdout.
     #[arg(long)]
-    output: String,
+    output: Option<String>,
 
     /// The name of the item to extract
     #[arg(long)]
@@ -64,8 +64,13 @@ fn main() -> std::io::Result<()> {
         };
 
         let formatted_code = prettyplease::unparse(&file_to_print);
-        fs::write(&cli.output, formatted_code)?;
-        println!("Successfully extracted item '{}' to '{}'", cli.item_name, cli.output);
+
+        if let Some(output_path) = cli.output {
+            fs::write(&output_path, formatted_code)?;
+            println!("Successfully extracted item '{}' to '{}'", cli.item_name, output_path);
+        } else {
+            print!("{}", formatted_code);
+        }
     } else {
         eprintln!("Item '{}' not found in '{}'", cli.item_name, cli.input);
         return Err(std::io::Error::new(
