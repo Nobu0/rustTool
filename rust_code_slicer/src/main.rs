@@ -1,6 +1,12 @@
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use std::fs;
 use syn::{File, Item};
+
+#[derive(ValueEnum, Clone, Debug)]
+enum OutputFormat {
+    Code,
+    Ast,
+}
 
 /// A simple tool to slice Rust code.
 #[derive(Parser, Debug)]
@@ -17,6 +23,10 @@ struct Cli {
     /// The name of the item to extract
     #[arg(long)]
     item_name: String,
+
+    /// The output format
+    #[arg(long, value_enum, default_value_t = OutputFormat::Code)]
+    format: OutputFormat,
 }
 
 fn main() -> std::io::Result<()> {
@@ -57,19 +67,27 @@ fn main() -> std::io::Result<()> {
     }
 
     if let Some(item) = found_item {
-        let file_to_print = syn::File {
-            shebang: None,
-            attrs: vec![],
-            items: vec![item],
+        let output_string = match cli.format {
+            OutputFormat::Code => {
+                let file_to_print = syn::File {
+                    shebang: None,
+                    attrs: vec![],
+                    items: vec![item],
+                };
+                prettyplease::unparse(&file_to_print)
+            }
+            OutputFormat::Ast => {
+                format!("{:#?}", item)
+            }
         };
 
-        let formatted_code = prettyplease::unparse(&file_to_print);
-
         if let Some(output_path) = cli.output {
-            fs::write(&output_path, formatted_code)?;
-            println!("Successfully extracted item '{}' to '{}'", cli.item_name, output_path);
+            fs::write(&output_path, output_string)?;
+            if matches!(cli.format, OutputFormat::Code) {
+                 println!("Successfully extracted item '{}' to '{}'", cli.item_name, output_path);
+            }
         } else {
-            print!("{}", formatted_code);
+            print!("{}", output_string);
         }
     } else {
         eprintln!("Item '{}' not found in '{}'", cli.item_name, cli.input);

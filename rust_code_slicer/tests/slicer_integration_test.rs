@@ -116,3 +116,17 @@ pub enum Message {
         .success()
         .stdout(expected_with_newline);
 }
+
+#[test]
+fn test_extract_ast() {
+    let mut cmd = Command::cargo_bin("rust_code_slicer").unwrap();
+    cmd.arg("--input=tests/complex_sample.rs")
+        .arg("--item-name=ComplexStruct")
+        .arg("--format=ast");
+
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("Item::Struct"))
+        .stdout(predicate::str::contains("ident: Ident"))
+        .stdout(predicate::str::contains("struct_token: Struct"));
+}
