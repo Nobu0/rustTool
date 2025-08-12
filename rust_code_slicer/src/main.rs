@@ -1,5 +1,6 @@
 use clap::{Parser, ValueEnum};
 use std::fs;
+use std::io::{self, Read};
 use syn::{File, Item};
 
 #[derive(ValueEnum, Clone, Debug)]
@@ -12,9 +13,9 @@ enum OutputFormat {
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
-    /// The input file to use
+    /// The input file to use. If not provided, reads from stdin.
     #[arg(long)]
-    input: String,
+    input: Option<String>,
 
     /// The output file to write to. If not provided, prints to stdout.
     #[arg(long)]
@@ -25,14 +26,20 @@ struct Cli {
     item_name: Option<String>,
 
     /// The output format
-    #[arg(long, value_enum, default_value_t = OutputFormat::Code)]
+    #[arg(long, value_enum, default_value_t = OutputFormat::Ast)]
     format: OutputFormat,
 }
 
 fn main() -> std::io::Result<()> {
     let cli = Cli::parse();
 
-    let source_code = fs::read_to_string(&cli.input)?;
+    let source_code = if let Some(ref input_path) = cli.input {
+        fs::read_to_string(input_path)?
+    } else {
+        let mut buf = String::new();
+        io::stdin().read_to_string(&mut buf)?;
+        buf
+    };
 
     let ast: File = match syn::parse_file(&source_code) {
         Ok(file) => file,
@@ -81,7 +88,8 @@ fn main() -> std::io::Result<()> {
             };
             (output, Some(item_name.clone()))
         } else {
-            eprintln!("Item '{}' not found in '{}'", item_name, cli.input);
+            let input_source = cli.input.as_deref().unwrap_or("stdin");
+            eprintln!("Item '{}' not found in '{}'", item_name, input_source);
             return Err(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
                 "Specified item not found in source file",
