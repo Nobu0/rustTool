@@ -20,9 +20,9 @@ struct Cli {
     #[arg(long)]
     output: Option<String>,
 
-    /// The name of the item to extract
+    /// The name of the item to extract. If not provided, the whole file is processed.
     #[arg(long)]
-    item_name: String,
+    item_name: Option<String>,
 
     /// The output format
     #[arg(long, value_enum, default_value_t = OutputFormat::Code)]
@@ -45,56 +45,64 @@ fn main() -> std::io::Result<()> {
         }
     };
 
-    let mut found_item: Option<Item> = None;
+    let (output_string, found_item_name) = if let Some(item_name) = &cli.item_name {
+        // Case 1: Find a specific item
+        let mut found_item: Option<Item> = None;
+        for item in ast.items {
+            let item_ident = match &item {
+                Item::Fn(item_fn) => Some(&item_fn.sig.ident),
+                Item::Struct(item_struct) => Some(&item_struct.ident),
+                Item::Enum(item_enum) => Some(&item_enum.ident),
+                Item::Mod(item_mod) => Some(&item_mod.ident),
+                Item::Trait(item_trait) => Some(&item_trait.ident),
+                Item::Macro(item_macro) => item_macro.ident.as_ref(),
+                _ => None,
+            };
 
-    for item in ast.items {
-        let item_ident = match &item {
-            Item::Fn(item_fn) => Some(&item_fn.sig.ident),
-            Item::Struct(item_struct) => Some(&item_struct.ident),
-            Item::Enum(item_enum) => Some(&item_enum.ident),
-            Item::Mod(item_mod) => Some(&item_mod.ident),
-            Item::Trait(item_trait) => Some(&item_trait.ident),
-            Item::Macro(item_macro) => item_macro.ident.as_ref(),
-            _ => None,
-        };
-
-        if let Some(ident) = item_ident {
-            if ident.to_string() == cli.item_name {
-                found_item = Some(item);
-                break;
+            if let Some(ident) = item_ident {
+                if ident.to_string() == *item_name {
+                    found_item = Some(item);
+                    break;
+                }
             }
         }
-    }
 
-    if let Some(item) = found_item {
-        let output_string = match cli.format {
-            OutputFormat::Code => {
-                let file_to_print = syn::File {
-                    shebang: None,
-                    attrs: vec![],
-                    items: vec![item],
-                };
-                prettyplease::unparse(&file_to_print)
-            }
-            OutputFormat::Ast => {
-                format!("{:#?}", item)
-            }
-        };
-
-        if let Some(output_path) = cli.output {
-            fs::write(&output_path, output_string)?;
-            if matches!(cli.format, OutputFormat::Code) {
-                 println!("Successfully extracted item '{}' to '{}'", cli.item_name, output_path);
-            }
+        if let Some(item) = found_item {
+            let output = match cli.format {
+                OutputFormat::Code => {
+                    let file_to_print = syn::File {
+                        shebang: None,
+                        attrs: vec![],
+                        items: vec![item],
+                    };
+                    prettyplease::unparse(&file_to_print)
+                }
+                OutputFormat::Ast => format!("{:#?}", item),
+            };
+            (output, Some(item_name.clone()))
         } else {
-            print!("{}", output_string);
+            eprintln!("Item '{}' not found in '{}'", item_name, cli.input);
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "Specified item not found in source file",
+            ));
         }
     } else {
-        eprintln!("Item '{}' not found in '{}'", cli.item_name, cli.input);
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            "Specified item not found in source file",
-        ));
+        // Case 2: Process the whole file
+        let output = match cli.format {
+            OutputFormat::Code => prettyplease::unparse(&ast),
+            OutputFormat::Ast => format!("{:#?}", ast),
+        };
+        (output, None)
+    };
+
+    if let Some(output_path) = cli.output {
+        fs::write(&output_path, &output_string)?;
+        if let (Some(item_name), OutputFormat::Code) = (found_item_name, cli.format) {
+             println!("Successfully extracted item '{}' to '{}'", item_name, output_path);
+        }
+    } else {
+        print!("{}", output_string);
     }
 
     Ok(())

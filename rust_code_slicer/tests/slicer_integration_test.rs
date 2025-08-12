@@ -130,3 +130,27 @@ fn test_extract_ast() {
         .stdout(predicate::str::contains("ident: Ident"))
         .stdout(predicate::str::contains("struct_token: Struct"));
 }
+
+#[test]
+fn test_whole_file_as_code() {
+    let mut cmd = Command::cargo_bin("rust_code_slicer").unwrap();
+    cmd.arg("--input=tests/complex_sample.rs");
+
+    let original_file_content = fs::read_to_string("tests/complex_sample.rs").unwrap();
+    let expected_output = prettyplease::unparse(&syn::parse_file(&original_file_content).unwrap());
+
+    cmd.assert().success().stdout(expected_output);
+}
+
+#[test]
+fn test_whole_file_as_ast() {
+    let mut cmd = Command::cargo_bin("rust_code_slicer").unwrap();
+    cmd.arg("--input=tests/complex_sample.rs")
+        .arg("--format=ast");
+
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("File {"))
+        .stdout(predicate::str::contains("shebang: None"))
+        .stdout(predicate::str::contains("items: ["));
+}
