@@ -1,5 +1,4 @@
 use clap::Parser;
-use quote::quote;
 use std::fs;
 use syn::{File, Item};
 
@@ -36,15 +35,16 @@ fn main() -> std::io::Result<()> {
         }
     };
 
-    let mut found_item: Option<&Item> = None;
+    let mut found_item: Option<Item> = None;
 
-    for item in &ast.items {
-        let item_ident = match item {
+    for item in ast.items {
+        let item_ident = match &item {
             Item::Fn(item_fn) => Some(&item_fn.sig.ident),
             Item::Struct(item_struct) => Some(&item_struct.ident),
             Item::Enum(item_enum) => Some(&item_enum.ident),
             Item::Mod(item_mod) => Some(&item_mod.ident),
             Item::Trait(item_trait) => Some(&item_trait.ident),
+            Item::Macro(item_macro) => item_macro.ident.as_ref(),
             _ => None,
         };
 
@@ -57,8 +57,14 @@ fn main() -> std::io::Result<()> {
     }
 
     if let Some(item) = found_item {
-        let quoted = quote! { #item };
-        fs::write(&cli.output, quoted.to_string())?;
+        let file_to_print = syn::File {
+            shebang: None,
+            attrs: vec![],
+            items: vec![item],
+        };
+
+        let formatted_code = prettyplease::unparse(&file_to_print);
+        fs::write(&cli.output, formatted_code)?;
         println!("Successfully extracted item '{}' to '{}'", cli.item_name, cli.output);
     } else {
         eprintln!("Item '{}' not found in '{}'", cli.item_name, cli.input);
