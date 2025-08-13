@@ -163,3 +163,23 @@ fn test_read_from_stdin() {
         .success()
         .stdout(predicate::str::contains("Item::Fn"));
 }
+
+#[test]
+fn test_format_csv() {
+    let mut cmd = Command::cargo_bin("rust_code_slicer").unwrap();
+    cmd.arg("--input=tests/complex_sample.rs")
+        .arg("--format=csv");
+
+    let expected_csv = "item_name,item_type,start_line,end_line\n\
+        ComplexStruct,Struct,3,8\n\
+        DoSomething,Trait,10,13\n\
+        impl DoSomething for ComplexStruct,Impl,16,20\n\
+        standalone_function,Function,23,28\n\
+        my_macro,Macro,31,36\n\
+        inner_module,Module,39,49\n\
+        Message,Enum,52,57\n";
+
+    cmd.assert()
+        .success()
+        .stdout(predicate::eq(expected_csv));
+}

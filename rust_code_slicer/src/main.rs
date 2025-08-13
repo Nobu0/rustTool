@@ -1,12 +1,14 @@
 use clap::{Parser, ValueEnum};
 use std::fs;
 use std::io::{self, Read};
+use syn::spanned::Spanned;
 use syn::{File, Item};
 
 #[derive(ValueEnum, Clone, Debug)]
 enum OutputFormat {
     Code,
     Ast,
+    Csv,
 }
 
 /// A simple tool to slice Rust code.
@@ -52,6 +54,17 @@ fn main() -> std::io::Result<()> {
         }
     };
 
+    // If format is CSV, we ignore everything else and just generate the CSV for the whole file.
+    if matches!(cli.format, OutputFormat::Csv) {
+        let csv_data = generate_csv(&ast).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        if let Some(output_path) = cli.output {
+            fs::write(&output_path, &csv_data)?;
+        } else {
+            print!("{}", csv_data);
+        }
+        return Ok(());
+    }
+
     let (output_string, found_item_name) = if let Some(item_name) = &cli.item_name {
         // Case 1: Find a specific item
         let mut found_item: Option<Item> = None;
@@ -85,6 +98,7 @@ fn main() -> std::io::Result<()> {
                     prettyplease::unparse(&file_to_print)
                 }
                 OutputFormat::Ast => format!("{:#?}", item),
+                OutputFormat::Csv => unreachable!(), // Handled above
             };
             (output, Some(item_name.clone()))
         } else {
@@ -100,13 +114,14 @@ fn main() -> std::io::Result<()> {
         let output = match cli.format {
             OutputFormat::Code => prettyplease::unparse(&ast),
             OutputFormat::Ast => format!("{:#?}", ast),
+            OutputFormat::Csv => unreachable!(), // Handled above
         };
         (output, None)
     };
 
     if let Some(output_path) = cli.output {
         fs::write(&output_path, &output_string)?;
-        if let (Some(item_name), OutputFormat::Code) = (found_item_name, cli.format) {
+        if let (Some(item_name), OutputFormat::Code) = (found_item_name, &cli.format) {
              println!("Successfully extracted item '{}' to '{}'", item_name, output_path);
         }
     } else {
@@ -114,4 +129,73 @@ fn main() -> std::io::Result<()> {
     }
 
     Ok(())
+}
+
+fn generate_csv(file: &syn::File) -> Result<String, csv::Error> {
+    let mut wtr = csv::Writer::from_writer(vec![]);
+    wtr.write_record(&["item_name", "item_type", "start_line", "end_line"])?;
+
+    for item in &file.items {
+        let (item_name, item_type, start_line, end_line) = match item {
+            Item::Fn(item_fn) => (
+                item_fn.sig.ident.to_string(),
+                "Function",
+                item.span().start().line,
+                item.span().end().line,
+            ),
+            Item::Struct(item_struct) => (
+                item_struct.ident.to_string(),
+                "Struct",
+                item.span().start().line,
+                item.span().end().line,
+            ),
+            Item::Enum(item_enum) => (
+                item_enum.ident.to_string(),
+                "Enum",
+                item.span().start().line,
+                item.span().end().line,
+            ),
+            Item::Mod(item_mod) => (
+                item_mod.ident.to_string(),
+                "Module",
+                item.span().start().line,
+                item.span().end().line,
+            ),
+            Item::Trait(item_trait) => (
+                item_trait.ident.to_string(),
+                "Trait",
+                item.span().start().line,
+                item.span().end().line,
+            ),
+            Item::Macro(item_macro) => (
+                item_macro.ident.as_ref().map_or_else(String::new, |i| i.to_string()),
+                "Macro",
+                item.span().start().line,
+                item.span().end().line,
+            ),
+            Item::Impl(item_impl) => {
+                let trait_name = item_impl.trait_.as_ref().map_or_else(String::new, |t| {
+                    let path = &t.1;
+                    quote::quote!(#path).to_string()
+                });
+                let type_name = match item_impl.self_ty.as_ref() {
+                    syn::Type::Path(type_path) => quote::quote!(#type_path).to_string(),
+                    _ => String::from(".."),
+                };
+                let name = if trait_name.is_empty() {
+                    format!("impl {}", type_name)
+                } else {
+                    format!("impl {} for {}", trait_name, type_name)
+                };
+                (name, "Impl", item.span().start().line, item.span().end().line)
+            }
+            _ => continue, // Ignore other item types for now
+        };
+        wtr.write_record(&[item_name, item_type.to_string(), start_line.to_string(), end_line.to_string()])?;
+    }
+
+    wtr.flush()?;
+    let data = String::from_utf8(wtr.into_inner().expect("CSV writer into_inner failed"))
+        .expect("CSV data is not valid UTF-8");
+    Ok(data)
 }
