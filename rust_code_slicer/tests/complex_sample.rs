@@ -1,4 +1,5 @@
 // This is a complex sample file for testing the rust_code_slicer tool.
+use std::collections::HashMap;
 
 /// A doc comment for a struct.
 #[derive(Debug, Clone)]

@@ -131,67 +131,77 @@ fn main() -> std::io::Result<()> {
     Ok(())
 }
 
+fn get_attrs_string(attrs: &[syn::Attribute]) -> String {
+    attrs
+        .iter()
+        .map(|attr| quote::quote!(#attr).to_string())
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 fn generate_csv(file: &syn::File) -> Result<String, csv::Error> {
     let mut wtr = csv::Writer::from_writer(vec![]);
-    wtr.write_record(&["item_name", "item_type", "start_line", "end_line"])?;
+    wtr.write_record(&["item_name", "item_type", "start_line", "end_line", "attributes"])?;
 
     for item in &file.items {
-        let (item_name, item_type, start_line, end_line) = match item {
+        let (item_name, item_type, start_line, end_line, attributes) = match item {
             Item::Fn(item_fn) => (
                 item_fn.sig.ident.to_string(),
                 "Function",
                 item.span().start().line,
                 item.span().end().line,
+                get_attrs_string(&item_fn.attrs),
             ),
             Item::Struct(item_struct) => (
                 item_struct.ident.to_string(),
                 "Struct",
                 item.span().start().line,
                 item.span().end().line,
+                get_attrs_string(&item_struct.attrs),
             ),
             Item::Enum(item_enum) => (
                 item_enum.ident.to_string(),
                 "Enum",
                 item.span().start().line,
                 item.span().end().line,
+                get_attrs_string(&item_enum.attrs),
             ),
             Item::Mod(item_mod) => (
                 item_mod.ident.to_string(),
                 "Module",
                 item.span().start().line,
                 item.span().end().line,
+                get_attrs_string(&item_mod.attrs),
             ),
             Item::Trait(item_trait) => (
                 item_trait.ident.to_string(),
                 "Trait",
                 item.span().start().line,
                 item.span().end().line,
+                get_attrs_string(&item_trait.attrs),
             ),
             Item::Macro(item_macro) => (
                 item_macro.ident.as_ref().map_or_else(String::new, |i| i.to_string()),
                 "Macro",
                 item.span().start().line,
                 item.span().end().line,
+                get_attrs_string(&item_macro.attrs),
             ),
             Item::Impl(item_impl) => {
-                let trait_name = item_impl.trait_.as_ref().map_or_else(String::new, |t| {
-                    let path = &t.1;
-                    quote::quote!(#path).to_string()
-                });
-                let type_name = match item_impl.self_ty.as_ref() {
-                    syn::Type::Path(type_path) => quote::quote!(#type_path).to_string(),
-                    _ => String::from(".."),
-                };
-                let name = if trait_name.is_empty() {
-                    format!("impl {}", type_name)
-                } else {
-                    format!("impl {} for {}", trait_name, type_name)
-                };
-                (name, "Impl", item.span().start().line, item.span().end().line)
+                let file_with_impl = syn::File { shebang: None, attrs: vec![], items: vec![item.clone()] };
+                let name = prettyplease::unparse(&file_with_impl);
+                // We just want the 'impl Trait for Type' part, not the whole block
+                let name = name.lines().next().unwrap_or("").trim().trim_end_matches('{').trim().to_string();
+                (name, "Impl", item.span().start().line, item.span().end().line, get_attrs_string(&item_impl.attrs))
+            }
+            Item::Use(item_use) => {
+                let file_with_use = syn::File { shebang: None, attrs: vec![], items: vec![item.clone()] };
+                let name = prettyplease::unparse(&file_with_use).trim().trim_end_matches(';').to_string();
+                (name, "Use", item.span().start().line, item.span().end().line, get_attrs_string(&item_use.attrs))
             }
             _ => continue, // Ignore other item types for now
         };
-        wtr.write_record(&[item_name, item_type.to_string(), start_line.to_string(), end_line.to_string()])?;
+        wtr.write_record(&[item_name, item_type.to_string(), start_line.to_string(), end_line.to_string(), attributes])?;
     }
 
     wtr.flush()?;

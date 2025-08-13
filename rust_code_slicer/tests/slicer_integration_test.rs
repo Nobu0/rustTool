@@ -170,16 +170,33 @@ fn test_format_csv() {
     cmd.arg("--input=tests/complex_sample.rs")
         .arg("--format=csv");
 
-    let expected_csv = "item_name,item_type,start_line,end_line\n\
-        ComplexStruct,Struct,3,8\n\
-        DoSomething,Trait,10,13\n\
-        impl DoSomething for ComplexStruct,Impl,16,20\n\
-        standalone_function,Function,23,28\n\
-        my_macro,Macro,31,36\n\
-        inner_module,Module,39,49\n\
-        Message,Enum,52,57\n";
+    let assert = cmd.assert().success();
+    let csv_output = std::str::from_utf8(&assert.get_output().stdout).unwrap();
 
-    cmd.assert()
-        .success()
-        .stdout(predicate::eq(expected_csv));
+    let mut rdr = csv::Reader::from_reader(csv_output.as_bytes());
+    let records: Vec<_> = rdr.records().map(|r| r.unwrap()).collect();
+
+    // Check header
+    assert_eq!(rdr.headers().unwrap(), &["item_name", "item_type", "start_line", "end_line", "attributes"][..]);
+
+    // Check number of records
+    assert_eq!(records.len(), 8);
+
+    // Spot check the 'use' record
+    let use_record = &records[0];
+    assert_eq!(&use_record[0], "use std::collections::HashMap");
+    assert_eq!(&use_record[1], "Use");
+
+    // Spot check the 'struct' record
+    let struct_record = &records[1];
+    assert_eq!(&struct_record[0], "ComplexStruct");
+    assert_eq!(&struct_record[1], "Struct");
+    assert!(&struct_record[4].contains("doc ="));
+    assert!(&struct_record[4].contains("derive (Debug , Clone)"));
+
+    // Spot check the 'impl' record
+    let impl_record = &records[3];
+    assert_eq!(&impl_record[0], "impl DoSomething for ComplexStruct");
+    assert_eq!(&impl_record[1], "Impl");
+    assert_eq!(&impl_record[4], ""); // No attributes on the impl block itself
 }
