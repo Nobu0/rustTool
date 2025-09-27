@@ -3,7 +3,8 @@ use std::fs;
 use std::io::{self, Read};
 use syn::spanned::Spanned;
 use syn::{File, Item};
-// Githubの更新テスト
+
+// Githubの更新テスト2回目
 /// Defines the possible output formats for the tool.
 #[derive(ValueEnum, Clone, Debug)]
 enum OutputFormat {
