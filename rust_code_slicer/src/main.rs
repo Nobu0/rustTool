@@ -4,7 +4,7 @@ use std::io::{self, Read};
 use syn::spanned::Spanned;
 use syn::{File, Item};
 
-// Githubの更新テスト3回目
+// Githubの更新テスト4回目
 /// Defines the possible output formats for the tool.
 #[derive(ValueEnum, Clone, Debug)]
 enum OutputFormat {
